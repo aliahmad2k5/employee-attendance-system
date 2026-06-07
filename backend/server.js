@@ -12,6 +12,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Import Route Files
+const authRoutes = require('./routes/authRoutes');
+
+// Mount API Routes
+app.use('/api/auth', authRoutes);
+
 // 3. Simple health check endpoint
 app.get('/', (req, res) => {
     res.status(200).send('Attendance System Backend API is live.');
