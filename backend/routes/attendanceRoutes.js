@@ -144,4 +144,57 @@ router.post('/checkout', protect, async (req, res) => {
     }
 });
 
+// @route   GET /api/attendance/history
+// @desc    Retrieve personal attendance history logs with calculated net working hours
+// @access  Private (Requires JWT token)
+router.get('/history', protect, async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        // Fetch all logs for the authenticated user, sorted from newest to oldest
+        const history = await Attendance.find({ user: userId }).sort({ date: -1 });
+
+        // Map through records and compute working durations dynamically
+        const processedHistory = history.map(record => {
+            let totalWorkMilliseconds = 0;
+
+            // Only calculate if the user has checked out
+            if (record.checkIn && record.checkOut) {
+                const totalShiftTime = new Date(record.checkOut) - new Date(record.checkIn);
+                
+                // Calculate total duration spent on breaks
+                let totalBreakTime = 0;
+                record.breaks.forEach(b => {
+                    if (b.start && b.end) {
+                        totalBreakTime += (new Date(b.end) - new Date(b.start));
+                    }
+                });
+
+                // Net Working Time = Gross Shift Time minus Break Deductions
+                totalWorkMilliseconds = totalShiftTime - totalBreakTime;
+                if (totalWorkMilliseconds < 0) totalWorkMilliseconds = 0; // Prevent negative edge cases
+            }
+
+            // Convert milliseconds into readable floating point hours (e.g., 7.50)
+            const calculatedHours = (totalWorkMilliseconds / (1000 * 60 * 60)).toFixed(2);
+
+            return {
+                _id: record._id,
+                date: record.date,
+                status: record.status,
+                checkIn: record.checkIn,
+                checkOut: record.checkOut || null,
+                breaks: record.breaks,
+                workingHours: parseFloat(calculatedHours)
+            };
+        });
+
+        res.status(200).json({ count: processedHistory.length, logs: processedHistory });
+
+    } catch (error) {
+        console.error('History Retrieval Error:', error.message);
+        res.status(500).json({ message: 'Internal Server Error retrieving attendance history.' });
+    }
+});
+
 module.exports = router;
