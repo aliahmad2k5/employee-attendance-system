@@ -14,9 +14,11 @@ app.use(express.json());
 
 // Import Route Files
 const authRoutes = require('./routes/authRoutes');
+const attendanceRoutes = require('./routes/attendanceRoutes');
 
 // Mount API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/attendance', attendanceRoutes);
 
 // 3. Simple health check endpoint
 app.get('/', (req, res) => {
