@@ -29,3 +29,26 @@ const protect = async (req, res, next) => {
 };
 
 module.exports = { protect };
+
+// Middleware to restrict route access based on user roles
+const restrictTo = (...allowedRoles) => {
+    return (req, res, next) => {
+        // Guard: Ensure user object exists (protect middleware must run before this)
+        if (!req.user) {
+            return res.status(500).json({ message: 'Authorization error. User identity missing.' });
+        }
+
+        // Check if the user's role is included in the allowed roles array
+        if (!allowedRoles.includes(req.user.role)) {
+            return res.status(403).json({ 
+                message: `Access denied. Role '${req.user.role}' is not authorized to access this resource.` 
+            });
+        }
+
+        // User is authorized, proceed to the controller logic
+        next();
+    };
+};
+
+// Update exports to include the new restriction guard
+module.exports = { protect, restrictTo };
