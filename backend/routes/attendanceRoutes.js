@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Attendance = require('../models/Attendance');
-const { protect } = require('../middleware/authMiddleware');
-
+const { protect, restrictTo } = require('../middleware/authMiddleware');
 // Helper function to get today's date format in local time (YYYY-MM-DD)
 const getTodayDateString = () => {
     const today = new Date();
@@ -194,6 +193,45 @@ router.get('/history', protect, async (req, res) => {
     } catch (error) {
         console.error('History Retrieval Error:', error.message);
         res.status(500).json({ message: 'Internal Server Error retrieving attendance history.' });
+    }
+});
+
+
+// @route   GET /api/attendance/admin/overview
+// @desc    Retrieve real-time company-wide attendance counts for today
+// @access  Private (Requires Admin Role Only)
+router.get('/admin/overview', protect, restrictTo('Admin'), async (req, res) => {
+    try {
+        // Get today's date format in local time (YYYY-MM-DD)
+        const todayStr = getTodayDateString();
+
+        // Fetch all attendance logs recorded for today
+        const todaysLogs = await Attendance.find({ date: todayStr }).populate('user', 'name email role');
+
+        // Initialize state counter buckets
+        const summary = {
+            totalActiveRecords: todaysLogs.length,
+            present: 0,
+            onBreak: 0,
+            checkedOut: 0
+        };
+
+        // Aggregation loop across active profiles
+        todaysLogs.forEach(log => {
+            if (log.status === 'Present') summary.present++;
+            else if (log.status === 'On Break') summary.onBreak++;
+            else if (log.status === 'Checked Out') summary.checkedOut++;
+        });
+
+        res.status(200).json({
+            date: todayStr,
+            summary,
+            detailedLogs: todaysLogs
+        });
+
+    } catch (error) {
+        console.error('Admin Analytics Error:', error.message);
+        res.status(500).json({ message: 'Internal Server Error compiling manager analytics.' });
     }
 });
 
