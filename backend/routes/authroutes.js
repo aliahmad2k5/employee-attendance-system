@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { protect, restrictTo } = require('../middleware/authMiddleware');
 
 // @route   POST /api/auth/register
 // @desc    Register a new employee or admin account
@@ -10,22 +12,18 @@ router.post('/register', async (req, res) => {
     try {
         const { name, email, password, role } = req.body;
 
-        // 1. Validation
         if (!name || !email || !password) {
             return res.status(400).json({ message: 'Please provide name, email, and password.' });
         }
 
-        // 2. Check for duplicate user
         const userExists = await User.findOne({ email });
         if (userExists) {
             return res.status(400).json({ message: 'A user with this email already exists.' });
         }
 
-        // 3. Hash the password securely
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // 4. Save to Local Database
         const newUser = new User({
             name,
             email,
@@ -44,15 +42,11 @@ router.post('/register', async (req, res) => {
                 role: newUser.role
             }
         });
-
     } catch (error) {
         console.error('Registration Error:', error.message);
         res.status(500).json({ message: 'Internal Server Error.' });
     }
 });
-
-
-const jwt = require('jsonwebtoken'); // Ensure this is imported at the top or here
 
 // @route   POST /api/auth/login
 // @desc    Authenticate user & return JWT token
@@ -61,36 +55,30 @@ router.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        // 1. Validation Check
         if (!email || !password) {
             return res.status(400).json({ message: 'Please provide both email and password.' });
         }
 
-        // 2. Locate User Record
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(401).json({ message: 'Invalid credentials.' }); // Masked reason for security
+            return res.status(401).json({ message: 'Invalid credentials.' });
         }
 
-        // 3. Status Check (Is account active?)
         if (!user.isActive) {
             return res.status(403).json({ message: 'Your account has been deactivated by an Administrator.' });
         }
 
-        // 4. Cryptographic Password Comparison
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(401).json({ message: 'Invalid credentials.' });
         }
 
-        // 5. Generate JSON Web Token
         const token = jwt.sign(
             { id: user._id, role: user.role },
             process.env.JWT_SECRET,
-            { expiresIn: '1d' } // Token expires automatically in 24 hours
+            { expiresIn: '1d' }
         );
 
-        // 6. Respond with Session Token and User Attributes
         res.status(200).json({
             message: 'Login successful!',
             token,
@@ -101,10 +89,26 @@ router.post('/login', async (req, res) => {
                 role: user.role
             }
         });
-
     } catch (error) {
         console.error('Login API Error:', error.message);
         res.status(500).json({ message: 'Internal Server Error. Login failed.' });
     }
 });
+
+// @route   PATCH /api/auth/users/:id/status
+// @desc    Toggle user active status
+// @access  Private (Admin Only)
+router.patch('/users/:id/status', protect, restrictTo('Admin'), async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        
+        user.isActive = !user.isActive;
+        await user.save();
+        res.json({ message: 'Status updated', isActive: user.isActive });
+    } catch (err) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 module.exports = router;
