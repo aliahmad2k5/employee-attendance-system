@@ -51,4 +51,60 @@ router.post('/register', async (req, res) => {
     }
 });
 
+
+const jwt = require('jsonwebtoken'); // Ensure this is imported at the top or here
+
+// @route   POST /api/auth/login
+// @desc    Authenticate user & return JWT token
+// @access  Public
+router.post('/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        // 1. Validation Check
+        if (!email || !password) {
+            return res.status(400).json({ message: 'Please provide both email and password.' });
+        }
+
+        // 2. Locate User Record
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(401).json({ message: 'Invalid credentials.' }); // Masked reason for security
+        }
+
+        // 3. Status Check (Is account active?)
+        if (!user.isActive) {
+            return res.status(403).json({ message: 'Your account has been deactivated by an Administrator.' });
+        }
+
+        // 4. Cryptographic Password Comparison
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ message: 'Invalid credentials.' });
+        }
+
+        // 5. Generate JSON Web Token
+        const token = jwt.sign(
+            { id: user._id, role: user.role },
+            process.env.JWT_SECRET,
+            { expiresIn: '1d' } // Token expires automatically in 24 hours
+        );
+
+        // 6. Respond with Session Token and User Attributes
+        res.status(200).json({
+            message: 'Login successful!',
+            token,
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role
+            }
+        });
+
+    } catch (error) {
+        console.error('Login API Error:', error.message);
+        res.status(500).json({ message: 'Internal Server Error. Login failed.' });
+    }
+});
 module.exports = router;
